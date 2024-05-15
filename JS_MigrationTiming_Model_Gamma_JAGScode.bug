@@ -1,0 +1,113 @@
+model{
+# Data in:
+# Vector of total hits per day = Nt (all days and years)
+# Vector of year = year (all days and years)
+# Vector of DOY = doy (all days and years)
+# Vector of proportion of upstream hits per day = pup
+# Vector of years with up/dn data = yearsup
+# Vector of doys with up/dn data = doyup
+# Integer total number of observations across all years = nobsall
+# Integer number of obs with up/dn data = nobsup
+# Integer number of years total = nyr
+# Integer number of years up/dn data = nyrup
+# Vector of integers linking year indices between short and full datasets = ylink
+
+
+# Daily count model
+for(i in 1:nobsall){ # for each observation
+	
+	Nt[i]~dnegbin(pt[i],rt[i]); #Likelihood for total detections on day i
+	llN[i]<-logdensity.negbin(Nt[i],pt[i],rt[i]); # Store likelihood as model output
+	
+	pt[i] <- (1/(wt+thetat*Nt.pred[i])); # Negative binomial shape
+	rt[i] <- (Nt.pred[i]/(wt-1+thetat*Nt.pred[i])); #Negative binomial rate 	
+	
+	Nt.pred[i]<-Nup.pred[i]+Ndn.pred[i]; # Total movements
+	
+	# Predict upstream movers for specified day
+	Nup.pred[i]<-(exp(lrun.yr[year[i]])*pow(rate[year[i]],shape[year[i]])/
+				    (exp(loggam(shape[year[i]])))*pow(doy[i],(shape[year[i]]-1))*exp(-1*rate[year[i]]*doy[i]))/psi[year[i]];
+	# Predict downstream movers for specified day
+	Ndn.pred[i]<-(exp(lrun.yr[year[i]])*pow(ratedn[year[i]],shapedn[year[i]])/
+				    (exp(loggam(shapedn[year[i]])))*pow(doy[i],(shapedn[year[i]]-1))*exp(-1*ratedn[year[i]]*doy[i]))/psid[year[i]];
+		
+}
+
+for(i in 1:nobsup){
+	# Predict upstream and downstream movers per day
+	Nup.obs[i]~dnegbin(pu[i],ru[i]); #Likelihood for Upstream migrations day i
+	llNup[i]<-logdensity.negbin(Nup.obs[i],pu[i],ru[i]); # Store likelihood as model output
+	
+	Ndn.obs[i]~dnegbin(pd[i],rd[i]); #Likelihood for Upstream migrations day i
+	llNdn[i]<-logdensity.negbin(Ndn.obs[i],pd[i],rd[i]); # Store likelihood as model output
+	
+	pu[i] <- (1/(wt+thetat*Nup.pred2[i])); # Negative binomial shape (must be between 0 and 1, inclusive)
+	ru[i] <- (Nup.pred2[i]/(wt-1+thetat*Nup.pred2[i])); #Negative binomial rate (must be greater than or equal to 0)
+	
+	pd[i] <- (1/(wt+thetat*Ndn.pred2[i])); # Negative binomial shape
+	rd[i] <- (Ndn.pred2[i]/(wt-1+thetat*Ndn.pred2[i])); #Negative binomial rate 
+		
+	# Predict upstream and downstream movements for specified day in years with directional data
+	Nup.pred2[i]<-(exp(lrun.yr[ylink[i]])*pow(rate[ylink[i]],shape[ylink[i]])/
+				    (exp(loggam(shape[ylink[i]])))*pow(doyup[i],(shape[ylink[i]]-1))*exp(-1*rate[ylink[i]]*doyup[i]))/psi[ylink[i]];
+	Ndn.pred2[i]<-(exp(lrun.yr[ylink[i]])*pow(ratedn[ylink[i]],shapedn[ylink[i]])/
+				    (exp(loggam(shapedn[ylink[i]])))*pow(doyup[i],(shapedn[ylink[i]]-1))*exp(-1*ratedn[ylink[i]]*doyup[i]))/psid[ylink[i]];
+}
+
+
+# Count model priors
+for(i in 1:nyr){
+	
+	shape[i]<-peak.date.use[i]*rate[i]+1; # Gamma model shape parameter for upstream movements
+	rate[i]<-(peak.date.use[i]+sqrt(pow(peak.date.use[i],2)+(4*pow(exp(lsig.run[i]),2))))/(2*exp(lsig.run[i])^2); # Gamma model rate parameter for upstream movements
+	
+	shapedn[i]<-peak.date.use.d[i]*ratedn[i]+1; # Gamma model shape parameter for downstream movements
+	ratedn[i]<-(peak.date.use.d[i]+sqrt(pow(peak.date.use.d[i],2)+(4*pow(exp(lsig.run[i]),2))))/(2*exp(lsig.run[i])^2); # Gamma model rate parameter for downstream movements
+	
+	peak.date.use[i]<- peak.date[i]-mindoy.yr[i]; # Adjust DOY for gamma model - day 1 is first day with observed data
+	peak.date.use.d[i]<- peak.date[i]-mindoy.yr[i] + d[i]; # Adjust DOY for gamma model - day 1 is first day with observed data
+	peak.date[i]~dnorm(mu.peak,tau.peak); # Peak migration date for year i
+	
+	lrun.yr[i]~dnorm(exp(lmu.run),tau.run); # log of total number of upstream movements year i
+	
+	lsig.run[i]~dnorm(mu.therealsig.run,tau.therealsig.run); # Among individual variation in upstream movement year i
+	lsig.run.d[i]~dnorm(mu.therealsig.run,tau.therealsig.run); # Among individual variation in downstream movement year i
+	
+	d[i]~dgamma(shape.d,rate.d); # Instream residence time
+	
+	# Correction factor upstream
+	psi[i]<-sum(preds[i,]);
+	for(j in 1:365){ 
+		preds[i,j]<- pow(rate[i],shape[i])/
+				    (exp(loggam(shape[i])))*pow(j,(shape[i]-1))*exp(-1*rate[i]*j);
+	}
+	
+	# Correction factor downstream
+	psid[i]<-sum(predsd[i,]);
+	for(k in 1:365){ 
+		predsd[i,k]<- pow(ratedn[i],shapedn[i])/
+				    (exp(loggam(shapedn[i])))*pow(k,(shapedn[i]-1))*exp(-1*ratedn[i]*k);
+	}
+}
+
+wt~dunif(0,10); # Overdispersion parameters
+thetat~dunif(0,10); #Overdispersion parameters
+
+# Hyperpriors
+mu.peak~dunif(110,190); # Mean of peak date prior
+tau.peak<- pow(sig.peak, -2); # Precision of peak date prior
+sig.peak~dunif(0.001,30); # SD of peak date prior
+
+shape.d~dunif(0,50); # Residence time shape parameter
+rate.d~dunif(.001,5); # Residence time rate parameter
+
+lmu.run~dunif(0,9); # Log of run size
+
+tau.run <- pow(exp(lsig.run.hp), -2); # run size precision
+lsig.run.hp~dnorm(0,.012); #run size standard deviation
+
+tau.therealsig.run<-pow(sig.therealsig.run,-2); # Precision of among-individual variation prior
+sig.therealsig.run~dunif(.01,1); # SD of among-individual variation prior
+mu.therealsig.run~dunif(.1,6); # Mean of among-individual variation prior
+
+}

@@ -1,0 +1,98 @@
+model{
+# Data in:
+# Vector of total hits per day = Nt (all days and years)
+# Vector of year = year (all days and years)
+# Vector of DOY = doy (all days and years)
+# Vector of proportion of upstream hits per day = pup
+# Vector of years with up/dn data = yearsup
+# Vector of doys with up/dn data = doyup
+# Integer total number of observations across alyears = nobsall
+# Integer number of obs with up/dn data = nobsup
+# Integer number of years total = nyr
+# Integer number of years up/dn data = nyrup
+# Vector of integers linking year indices between short and full datasets = ylink
+
+
+# Daily count model
+for(i in 1:nobsall){ 
+	
+	Nt[i]~dnegbin(pt[i],rt[i]); #Likelihood for total detections on day i
+	llN[i]<-logdensity.negbin(Nt[i],pt[i],rt[i]); # Store likelihood as model output
+	
+	pt[i] <- (1/(wt+thetat*Nt.pred[i])); # Negative binomial shape
+	rt[i] <- (Nt.pred[i]/(wt-1+thetat*Nt.pred[i])); #Negative binomial rate
+		
+	Nt.pred[i]<-Nup.pred[i]+Ndn.pred[i]; # Calculate total predicted movements on specified day
+	
+	# Predict upstream movers on specified day
+	Nup.pred[i]<-(exp(lrun.yr[year[i]])/(sqrt(3.14159*2)*exp(lsig.run[year[i]]))* 
+					exp(-1*pow(doy[i]-peak.date[year[i]],2)/(2*pow(exp(lsig.run[year[i]]),2))))/psi[year[i]];
+	
+	# Predict downstream movers on specified day
+	Ndn.pred[i]<-(exp(lrun.yr[year[i]])/(sqrt(3.14159*2)*exp(lsig.run[year[i]]))* 
+					exp(-1*pow((doy[i]-d[year[i]])-peak.date[year[i]],2)/(2*pow(exp(lsig.run[year[i]]),2))))/psi[year[i]];
+	
+}
+
+for(i in 1:nobsup){
+	# Predict upstream and downstream movers per day
+	Nup.obs[i]~dnegbin(pu[i],ru[i]); #Likelihood for Upstream migrations day i
+	llNup[i]<-logdensity.negbin(Nup.obs[i],pu[i],ru[i]); # Store likelihood as model output
+	Ndn.obs[i]~dnegbin(pd[i],rd[i]); #Likelihood for Upstream migrations day i
+	llNdn[i]<-logdensity.negbin(Ndn.obs[i],pd[i],rd[i]); # Store likelihood as model output
+	
+	pu[i] <- (1/(wt+thetat*Nup.pred2[i])); # Negative binomial shape
+	ru[i] <- (Nup.pred2[i]/(wt-1+thetat*Nup.pred2[i])); #Negative binomial rate 
+	pd[i] <- (1/(wt+thetat*Ndn.pred2[i])); # Negative binomial shape
+	rd[i] <- (Ndn.pred2[i]/(wt-1+thetat*Ndn.pred2[i])); #Negative binomial rate 
+	
+	# Predict upstream and downstream movements for specified day in years with directional data
+	Nup.pred2[i]<-(exp(lrun.yr[ylink[i]])/(sqrt(3.14159*2)*exp(lsig.run[ylink[i]]))* 
+					exp(-1*pow(doyup[i]-peak.date[ylink[i]],2)/(2*pow(exp(lsig.run[ylink[i]]),2))))/psi[ylink[i]];
+	Ndn.pred2[i]<-(exp(lrun.yr[ylink[i]])/(sqrt(3.14159*2)*exp(lsig.run[ylink[i]]))* 
+				exp(-1*pow((doyup[i]-d[ylink[i]])-peak.date[ylink[i]],2)/(2*pow(exp(lsig.run[ylink[i]]),2))))/psi[ylink[i]];
+				
+}
+
+
+
+# Count model priors
+for(i in 1:nyr){
+	peak.date[i]~dnorm(mu.peak,tau.peak); # Peak migration date for year i
+	lrun.yr[i]~dnorm(exp(lmu.run),tau.run); # log of total number of upstream movements year i
+	lsig.run[i]~dnorm(mu.therealsig.run,tau.therealsig.run); # log of among-individual variation in migration timing in year i
+	d[i]~dgamma(shape.d,rate.d); # Instream residence time
+	
+	# Correction factor psi
+	psi[i]<-sum(preds[i,]);
+	for(j in 1:365){ 
+	 preds[i,j]<- 1/(sqrt(3.14159*2)*exp(lsig.run[i]))*
+					exp(-1*pow(j-peak.date[i],2)/(2*pow(exp(lsig.run[i]),2)));
+	}
+	
+}
+
+wt~dunif(0,10); # Overdispersion parameters
+thetat~dunif(0,10); #Overdispersion parameters
+
+# Hyperprior
+mu.peak~dunif(110,190); # Mean of peak date prior
+tau.peak<- pow(sig.peak, -2); # Precision of peak date prior
+sig.peak~dunif(0.001,30); # SD of peak date prior
+
+shape.d~dunif(0,50); # Residence time shape parameter
+rate.d~dunif(.001,5); # Residence time rate parameter
+
+lmu.run~dunif(0,9); # Log of run size
+
+tau.run <- pow(exp(lsig.run.hp), -2); # run size precision
+lsig.run.hp~dnorm(0,.012); #run size standard deviation
+
+
+tau.therealsig.run<-pow(sig.therealsig.run,-2); # Precision of among-individual variation prior
+sig.therealsig.run~dunif(.01,1); # SD of among-individual variation prior
+mu.therealsig.run~dunif(.1,6); # Mean of among-individual variation prior
+
+
+
+}
