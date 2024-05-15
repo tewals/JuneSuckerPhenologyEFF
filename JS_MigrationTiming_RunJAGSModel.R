@@ -22,7 +22,7 @@ library(rjags)
 
 
 # import the csv with migration data 
-dat<-read.csv("JS.minmax.csv")
+dat<-read.csv("JS_MigrationTiming_DailyAntennaCounts.csv")
 
 #### Defining data values nad vectors to feed into JAGS model
 
